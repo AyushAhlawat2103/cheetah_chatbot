@@ -7,43 +7,57 @@ import random
 from gtts import gTTS
 import pygame
 import os
+import time
 
 recognizer = sr.Recognizer()
 engine = pyttsx3.init()
+
+# ---------- TEXT TO SPEECH ----------
 
 def speak_old(text):
     engine.say(text)
     engine.runAndWait()
 
 def speak(text):
-    tts = gTTS(text)
-    tts.save('temp.mp3')
-    
-    pygame.mixer.init()
-    pygame.mixer.music.load('temp.mp3')
-    pygame.mixer.music.play()
-    
-    while pygame.mixer.music.get_busy():
-        pygame.time.Clock().tick(10)
-    
-    pygame.mixer.music.unload()
-    os.remove("temp.mp3")
+    try:
+        tts = gTTS(text)
+        filename = "temp.mp3"
+        tts.save(filename)
+
+        pygame.mixer.init()
+        pygame.mixer.music.load(filename)
+        pygame.mixer.music.play()
+
+        while pygame.mixer.music.get_busy():
+            time.sleep(0.1)
+
+        pygame.mixer.music.unload()
+        pygame.mixer.quit()
+
+        if os.path.exists(filename):
+            os.remove(filename)
+
+    except Exception:
+        speak_old(text)
+
+# ---------- FEATURES ----------
 
 def get_weather(city):
-    api_key = "your_openweathermap_api_key"  # Replace with a valid API key
+    api_key = "YOUR_API_KEY_HERE"  # replace with real key
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
     response = requests.get(url).json()
+
     if response.get("main"):
         temp = response["main"]["temp"]
         description = response["weather"][0]["description"]
-        return f"The temperature in {city} is {temp}°C with {description}."
+        return f"The temperature in {city} is {temp} degree Celsius with {description}."
     else:
-        return "I couldn't get the weather. Please check the city name."
+        return "Sorry, I couldn't fetch the weather."
 
 def get_random_fact():
     facts = [
-        "Honey never spoils. Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3000 years old and still perfectly good.",
-        "Bananas are berries, but strawberries aren't.",
+        "Honey never spoils.",
+        "Bananas are berries, but strawberries are not.",
         "A day on Venus is longer than a year on Venus.",
         "Octopuses have three hearts.",
         "Sharks existed before trees."
@@ -52,57 +66,85 @@ def get_random_fact():
 
 def get_motivation():
     quotes = [
-        "Believe in yourself and all that you are.",
-        "The only way to do great work is to love what you do.",
-        "Success is not final, failure is not fatal: it is the courage to continue that counts.",
-        "Don't watch the clock; do what it does. Keep going.",
-        "Difficulties in life are intended to make us better, not bitter."
+        "Believe in yourself.",
+        "Do what you love and love what you do.",
+        "Failure is not the opposite of success, it is part of success.",
+        "Keep going. Everything you need will come to you.",
+        "Dream big and dare to fail."
     ]
     return random.choice(quotes)
 
-def processCommand(c):
-    if "open google" in c.lower():
+# ---------- COMMAND PROCESSING ----------
+
+def processCommand(command):
+    command = command.lower()
+
+    if "open google" in command:
         webbrowser.open("https://google.com")
-    elif "open facebook" in c.lower():
+
+    elif "open facebook" in command:
         webbrowser.open("https://facebook.com")
-    elif "open youtube" in c.lower():
+
+    elif "open youtube" in command:
         webbrowser.open("https://youtube.com")
-    elif "open linkedin" in c.lower():
-        webbrowser.open("https://linkedin.com")  
-    elif c.lower().startswith("play"):
-        song = c.lower().split(" ")[1]
-        link = musicLibrary.music.get(song, None)
+
+    elif "open linkedin" in command:
+        webbrowser.open("https://linkedin.com")
+
+    elif command.startswith("play"):
+        song = command.replace("play", "").strip()
+        link = musicLibrary.music.get(song)
+
         if link:
+            speak(f"Playing {song}")
             webbrowser.open(link)
         else:
-            speak(f"Sorry, I couldn't find {song}. You can add it to the library.")
-    elif "weather in" in c.lower():
-        city = c.lower().split("weather in ")[1]
+            speak("Sorry, I couldn't find that song.")
+
+    elif "weather in" in command:
+        city = command.split("weather in")[-1].strip()
         speak(get_weather(city))
-    elif "tell me a fact" in c.lower():
+
+    elif "tell me a fact" in command:
         speak(get_random_fact())
-    elif "motivate me" in c.lower():
+
+    elif "motivate me" in command:
         speak(get_motivation())
 
+    elif "exit" in command or "stop" in command or "quit" in command:
+        speak("Goodbye! See you soon.")
+        exit()
+
+    else:
+        speak("Sorry, I didn't understand that.")
+
+# ---------- MAIN LOOP ----------
+
 if __name__ == "__main__":
-    speak("Initializing Cheetah....")
+    speak("Initializing Cheetah")
+
     while True:
-        r = sr.Recognizer()
-        
-        print("Recognizing...")
         try:
             with sr.Microphone() as source:
-                print("Listening...")
-                audio = r.listen(source, timeout=2, phrase_time_limit=1)
-            word = r.recognize_google(audio)
-            if word.lower() == "cheetah":
+                recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                print("Listening for wake word...")
+                audio = recognizer.listen(source, timeout=5, phrase_time_limit=3)
+
+            wake_word = recognizer.recognize_google(audio).lower()
+
+            if wake_word == "cheetah":
                 speak("Yes?")
                 with sr.Microphone() as source:
-                    print("Cheetah Active...")
-                    audio = r.listen(source)
-                    command = r.recognize_google(audio)
+                    print("Cheetah active...")
+                    audio = recognizer.listen(source, timeout=5, phrase_time_limit=5)
+                    command = recognizer.recognize_google(audio)
                     processCommand(command)
-        except Exception as e:
-            print("Error: {0}".format(e))
-    
 
+        except sr.UnknownValueError:
+            pass  # ignore noise
+
+        except sr.WaitTimeoutError:
+            pass  # user silent
+
+        except Exception as e:
+            print("Error:", e)
